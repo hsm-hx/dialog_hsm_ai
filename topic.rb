@@ -15,7 +15,7 @@ class NattoParser
     @nm.parse(text) do |n|
       pos = n.feature.split(",")[0]
       if pos == "名詞" and n.posid != 59
-        words.push(n.surface)
+        words.push([n.surface, n.posid])
       end
     end
 
@@ -36,10 +36,3 @@ class CaboChaParser
     return tree
   end
 end
-
-n = NattoParser.new
-
-text = STDIN.gets
-p n.extractWord(text)
-
-

@@ -1,6 +1,8 @@
 require 'natto'
 require 'twitter'
 
+class BlockNotFoundError < StandardError; end
+
 class TweetBot
   attr_accessor :client
   attr_accessor :screen_name
@@ -105,21 +107,23 @@ class NattoParser
   def parseTextArray(texts)
     words = []
     index = 0
+    breakcount = 0
 
-    for text in texts do
+    texts.length.times do |i|
       # 単語数を数える
       count_noun = 0
-      @nm.parse(text) do |n|
+      @nm.parse(texts[i]) do |n|
         count_noun += 1
       end
 
       # 1単語しかなければ以後の処理を行わない
       if count_noun == 1
+        breakcount += 1
         break
       end
 
       words.push(Array[])
-      @nm.parse(text) do |n|
+      @nm.parse(texts[i]) do |n|
         if n.surface != ""
           words[index].push([n.surface, n.posid])
         end
@@ -137,18 +141,18 @@ class Marcov
       result = []
 
       begin
-        p findBlocks(blocks, keyword)
-        result = connectBlockBack(
-          findBlocks(blocks, keyword), 
-          result,
-          true
-        )
-        if result == -1
-          p result
+        block = findBlocks(blocks, keyword)
+        if block == -1
           raise RuntimeError
         end
+        if block == []
+          raise BlockNotFoundError
+        end
+        result = connectBlockBack(block, result, true)
       rescue RuntimeError
         retry
+      rescue BlockNotFoundError
+        return "えー、それはなに"
       end
 
 
@@ -194,10 +198,6 @@ class Marcov
         end
       end
 
-      if blocks.empty?
-        p array.select {|item| item.include?(target)}
-      end
-
       return blocks
     end
 
@@ -209,17 +209,12 @@ class Marcov
         end
       end
 
-      if blocks.empty?
-        p array.select {|item| item.include?(target)}
-      end
-      
       return blocks
     end
 
     def findBlocks(array, target)
       blocks = []
       for block in array
-        p block
         if block.include?(target)
           blocks.push(block)
         end
@@ -326,7 +321,7 @@ def generate_text_from_json(keyword, dir)
   end
 
   words = parser.parseTextArray(tweets)
-  
+
   # 3単語ブロックをツイートごとの配列に格納
   for word in words
     block.push(marcov.genMarcovBlock(word))
@@ -371,6 +366,10 @@ def get_tweets_from_JSON(filename)
 end
 
 def words2str(words)
+  if words.kind_of?(String)
+    return words
+  end
+
   str = ""
   for word in words do
     if word != -1
