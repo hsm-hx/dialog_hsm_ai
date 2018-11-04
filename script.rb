@@ -1,7 +1,6 @@
 require 'natto'
-require 'twitter'
-
-class BlockNotFoundError < StandardError; end
+require 'json'
+require 'mongo'
 
 class NattoParser
   attr_accessor :nm
@@ -47,52 +46,6 @@ class Marcov
     end
 end
 
-# ===================================================
-# 汎用関数
-# ===================================================
-def generate_text_from_json(keyword, dir)
-  parser = NattoParser.new
-  marcov = Marcov.new
-
-  block = []
-
-  tweet = ""
-  
-  if dir != ""
-    tweets = get_tweets_from_JSON(dir)
-  else
-    tweets = []
-    Dir.glob("data/*"){ |f|
-      tweets.push(get_tweets_from_JSON(f))
-    }
-    tweets = reduce_degree(tweets)
-  end
-
-  words = parser.parseTextArray(tweets)
-
-  # 3単語ブロックをツイートごとの配列に格納
-  for word in words
-    block.push(marcov.genMarcovBlock(word))
-  end
-
-  block = reduce_degree(block)
-
-  # 140字に収まる文章が練成できるまでマルコフ連鎖する
-  while tweet.length == 0 or tweet.length > 140 do
-    begin
-      tweetwords = marcov.marcov(block, keyword)
-      if tweetwords == -1
-        raise RuntimeError
-      end
-    rescue RuntimeError
-      retry
-    end
-    tweet = words2str(tweetwords)
-  end
-  
-  return tweet
-end
-
 def get_tweets_from_JSON(filename)
   data = nil
 
@@ -113,32 +66,6 @@ def get_tweets_from_JSON(filename)
   return tweets
 end
 
-def words2str(words)
-  if words.kind_of?(String)
-    return words
-  end
-
-  str = ""
-  for word in words do
-    if word != -1
-      str += word[0]
-    end
-  end
-  return str
-end
-
-def reduce_degree(array)
-  result = []
-
-  array.each do |a|
-    a.each do |v|
-      result.push(v)
-    end
-  end
-  
-  return result
-end
-
 def tweet2textdata(text)
   replypattern = /@[\w]+/
 
@@ -153,8 +80,24 @@ def tweet2textdata(text)
   return text
 end
 
-def main()
+def reduce_degree(array)
+  result = []
+
+  array.each do |a|
+    a.each do |v|
+      result.push(v)
+    end
+  end
+  
+  return result
+end
+
+def makeDataBase()
   n = NattoParser.new
+  m = Marcov.new
+
+  client = Mongo::Client.new('mongodb://localhost/hsm_ai')
+  coll = client[:blocks]
 
   monthlytweets= []
   Dir.glob("data/*") do |f|
@@ -163,9 +106,18 @@ def main()
 
   parsedtweet = []
   monthlytweets.each_with_index do |tweets, i|
-    p "============= #{i} ============"
     parsedtweet.push(n.parseTextArray(tweets))
   end
+    
+  parsedtweet = reduce_degree(parsedtweet)
+
+  parsedtweet.each do |p|
+    m.genMarcovBlock(p).each do |b|
+      coll.insert_one({block: b})
+    end
+  end
+
+  p coll.find_one
 end
 
-main()
+makeDataBase()
