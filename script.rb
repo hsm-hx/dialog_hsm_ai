@@ -28,9 +28,9 @@ class NattoParser
   end
 end
 
-class Marcov
+class Markov
   public
-    def genMarcovBlock(words)
+    def genMarkovBlock(words)
       array = []
 
       # 最初と最後は-1にする
@@ -94,7 +94,7 @@ end
 
 def makeDataBase()
   n = NattoParser.new
-  m = Marcov.new
+  m = Markov.new
 
   client = Mongo::Client.new('mongodb://localhost/hsm_ai')
   coll = client[:blocks]
@@ -112,7 +112,7 @@ def makeDataBase()
   parsedtweet = reduce_degree(parsedtweet)
 
   parsedtweet.each do |p|
-    m.genMarcovBlock(p).each do |b|
+    m.genMarkovBlock(p).each do |b|
       coll.insert_one({block: b})
     end
   end

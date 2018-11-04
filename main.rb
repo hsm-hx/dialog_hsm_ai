@@ -1,4 +1,4 @@
-require './marcov.rb'
+require './markov.rb'
 require './topic.rb'
 
 def main()

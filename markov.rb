@@ -135,9 +135,9 @@ class NattoParser
   end
 end
 
-class Marcov
+class Markov
   public
-    def marcov(blocks, keyword)
+    def markov(blocks, keyword)
       result = []
 
       begin
@@ -174,7 +174,7 @@ class Marcov
       return result
     end
 
-    def genMarcovBlock(words)
+    def genmarkovBlock(words)
       array = []
 
       # 最初と最後は-1にする
@@ -269,7 +269,7 @@ end
 # ===================================================
 def generate_text(keyword, bot)
   parser = NattoParser.new
-  marcov = Marcov.new
+  markov = markov.new
 
   block = []
 
@@ -281,7 +281,7 @@ def generate_text(keyword, bot)
   
   # 3単語ブロックをツイートごとの配列に格納
   for word in words
-    block.push(marcov.genMarcovBlock(word))
+    block.push(markov.genmarkovBlock(word))
   end
 
   block = reduce_degree(block)
@@ -289,7 +289,7 @@ def generate_text(keyword, bot)
   # 140字に収まる文章が練成できるまでマルコフ連鎖する
   while tweet.length == 0 or tweet.length > 140 do
     begin
-      tweetwords = marcov.marcov(block, keyword)
+      tweetwords = markov.markov(block, keyword)
       if tweetwords == -1
         raise RuntimeError
       end
@@ -304,7 +304,7 @@ end
 
 def generate_text_from_json(keyword, dir)
   parser = NattoParser.new
-  marcov = Marcov.new
+  markov = markov.new
 
   block = []
 
@@ -324,7 +324,7 @@ def generate_text_from_json(keyword, dir)
 
   # 3単語ブロックをツイートごとの配列に格納
   for word in words
-    block.push(marcov.genMarcovBlock(word))
+    block.push(markov.genmarkovBlock(word))
   end
 
   block = reduce_degree(block)
@@ -332,7 +332,7 @@ def generate_text_from_json(keyword, dir)
   # 140字に収まる文章が練成できるまでマルコフ連鎖する
   while tweet.length == 0 or tweet.length > 140 do
     begin
-      tweetwords = marcov.marcov(block, keyword)
+      tweetwords = markov.markov(block, keyword)
       if tweetwords == -1
         raise RuntimeError
       end
