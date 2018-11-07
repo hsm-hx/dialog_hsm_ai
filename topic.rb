@@ -1,5 +1,5 @@
 require 'natto'
-require 'cabocha'
+#require 'cabocha'
 
 class NattoParser
   attr_accessor :nm
@@ -23,6 +23,7 @@ class NattoParser
   end
 end
 
+=begin
 class CaboChaParser
   attr_accessor :cp
 

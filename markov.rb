@@ -1,101 +1,10 @@
 require 'natto'
-require 'twitter'
+require 'mongo'
+
+client = Mongo::Client.new("mongodb://localhost/hsm_ai")
+$col = client[:blocks]
 
 class BlockNotFoundError < StandardError; end
-
-class TweetBot
-  attr_accessor :client
-  attr_accessor :screen_name
-
-  public
-    def initialize(screen_name)
-      @client = Twitter::REST::Client.new do |config|
-        config.consumer_key = ENV['CONSUMER_KEY']
-        config.consumer_secret = ENV['CONSUMER_SECRET']
-        config.access_token = ENV['ACCESS_TOKEN_KEY']
-        config.access_token_secret = ENV['ACCESS_TOKEN_SECRET']
-      end
-  
-      @screen_name = screen_name
-    end
-     
-    def post(text = "", twitter_id:nil, status_id:nil)
-      if status_id
-        rep_text = "@#{twitter_id} #{text}"
-        @client.update(rep_text, {:in_reply_to_status_id => status_id})
-      else
-        @client.update(text)
-      end
-    end
-    
-    def get_tweet(count=15, user=@screen_name)
-      tweets = []
-      
-      @client.user_timeline(user, {count: count}).each do |timeline|
-        tweet = @client.status(timeline.id)
-        # RT(とRTを含むツイート)を除外
-        if not (tweet.text.include?("RT"))
-          # Deckと泥公式以外からのツイートを除外
-          if (tweet.source.include?("TweetDeck") or
-              tweet.source.include?("Twitter for Android"))
-            tweets.push(tweet2textdata(tweet.text))
-          end
-        end
-      end
-
-      return tweets
-    end
-    
-    def auto_follow()
-      begin
-        @client.follow(
-          get_follower(@screen_name) - get_friend(@screen_name)
-        )
-      rescue Twitter::Error::Forbidden => error
-        # そのまま続ける
-      end  
-    end
-    
-  private
-    # ===============================================
-    # Twitter API
-    # ===============================================
-    def fav(status_id)
-      if status_id
-        @client.favorite(status_id)
-      end
-    end
-    
-    def retweets(status_id:nil)
-      if status_id
-        @client.retweet(status_id)
-      end
-    end
-    
-    def search(word, count=15)
-      tweets = []
-      @client.search(word).take(count).each do |tweet|
-        tweets.push(tweet.id)
-      end
-      return tweets
-    end
-    
-    def get_follower(user=@screen_name)
-      follower = []
-      @client.follower_ids(user).each do |id|
-        follower.push(id)
-      end
-      return follower
-    end
-    
-    def get_friend(user=@screen_name)
-      friend = []
-      @client.friend_ids(user).each do |id|
-        friend.push(id)
-      end
-      return friend
-    end
-end
 
 class NattoParser
   attr_accessor :nm
@@ -137,11 +46,11 @@ end
 
 class Markov
   public
-    def markov(blocks, keyword)
+    def markov(keyword)
       result = []
 
       begin
-        block = findBlocks(blocks, keyword)
+        block = findBlocks(keyword)
         if block == -1
           raise RuntimeError
         end
@@ -155,18 +64,17 @@ class Markov
         return "えー、それはなに"
       end
 
-
       # resultの最後の単語が-1になるまで繰り返す
       while result[result.length-1] != -1 do
         result = connectBlockBack(
-          findBlocksBack(blocks, result[result.length-1]), 
+          findBlocksBack(result[result.length-1]), 
           result
         )
       end
 
       while result[0] != -1 do
         result = connectBlockFront(
-          findBlocksFront(blocks, result[0]), 
+          findBlocksFront(result[0]), 
           result
         )
       end
@@ -190,36 +98,41 @@ class Markov
     end
 
   private
-    def findBlocksFront(array, target)
+    def findBlocksFront(target)
       blocks = []
-      for block in array
-        if block[2] == target
-          blocks.push(block)
+
+      result = $col.find({block: target})
+      result.each do |doc|
+        if doc[:block][2] == target
+          blocks.push(doc[:block])
         end
       end
 
       return blocks
     end
 
-    def findBlocksBack(array, target)
+    def findBlocksBack(target)
       blocks = []
-      for block in array
-        if block[0] == target
-          blocks.push(block)
+
+      result = $col.find({block: target})
+      result.each do |doc|
+        if doc[:block][0] == target
+          blocks.push(doc[:block])
         end
       end
 
       return blocks
     end
 
-    def findBlocks(array, target)
+    def findBlocks(target)
       blocks = []
-      for block in array
-        if block.include?(target)
-          blocks.push(block)
-        end
+
+      result = $col.find({block: target})
+      result.each do |doc|
+        blocks.push(doc[:block])
+        p doc[:block]
       end
-      
+
       return blocks
     end
 
@@ -227,6 +140,7 @@ class Markov
       part_of_dist = []
 
       i = 0
+      
       block = array[rand(array.length)]
 
       for word in block
@@ -267,76 +181,21 @@ end
 # ===================================================
 # 汎用関数
 # ===================================================
-def generate_text(keyword, bot)
-  parser = NattoParser.new
-  markov = markov.new
-
-  block = []
-
-  tweet = ""
-  
-  tweets = bot.get_tweet(200, screen_name)
-
-  words = parser.parseTextArray(tweets)
-  
-  # 3単語ブロックをツイートごとの配列に格納
-  for word in words
-    block.push(markov.genmarkovBlock(word))
-  end
-
-  block = reduce_degree(block)
-
-  # 140字に収まる文章が練成できるまでマルコフ連鎖する
-  while tweet.length == 0 or tweet.length > 140 do
-    begin
-      tweetwords = markov.markov(block, keyword)
-      if tweetwords == -1
-        raise RuntimeError
-      end
-    rescue RuntimeError
-      retry
-    end
-    tweet = words2str(tweetwords)
-  end
-  
-  return tweet
-end
-
 def generate_text_from_json(keyword, dir)
   parser = NattoParser.new
-  markov = markov.new
-
-  block = []
+  markov = Markov.new
 
   tweet = ""
   
-  if dir != ""
-    tweets = get_tweets_from_JSON(dir)
-  else
-    tweets = []
-    Dir.glob("data/*"){ |f|
-      tweets.push(get_tweets_from_JSON(f))
-    }
-    tweets = reduce_degree(tweets)
-  end
-
-  words = parser.parseTextArray(tweets)
-
-  # 3単語ブロックをツイートごとの配列に格納
-  for word in words
-    block.push(markov.genmarkovBlock(word))
-  end
-
-  block = reduce_degree(block)
-
   # 140字に収まる文章が練成できるまでマルコフ連鎖する
   while tweet.length == 0 or tweet.length > 140 do
     begin
-      tweetwords = markov.markov(block, keyword)
+      tweetwords = markov.markov(keyword)
       if tweetwords == -1
         raise RuntimeError
       end
     rescue RuntimeError
+      p "================================="
       retry
     end
     tweet = words2str(tweetwords)
