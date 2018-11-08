@@ -1,48 +1,9 @@
-require 'natto'
 require 'mongo'
 
 client = Mongo::Client.new("mongodb://localhost/hsm_ai")
 $col = client[:blocks]
 
 class BlockNotFoundError < StandardError; end
-
-class NattoParser
-  attr_accessor :nm
-  
-  def initialize()
-    @nm = Natto::MeCab.new
-  end
-  
-  def parseTextArray(texts)
-    words = []
-    index = 0
-    breakcount = 0
-
-    texts.length.times do |i|
-      # 単語数を数える
-      count_noun = 0
-      @nm.parse(texts[i]) do |n|
-        count_noun += 1
-      end
-
-      # 1単語しかなければ以後の処理を行わない
-      if count_noun == 1
-        breakcount += 1
-        break
-      end
-
-      words.push(Array[])
-      @nm.parse(texts[i]) do |n|
-        if n.surface != ""
-          words[index].push([n.surface, n.posid])
-        end
-      end
-      index += 1
-    end
-
-    return words
-  end
-end
 
 class Markov
   public
@@ -182,7 +143,6 @@ end
 # 汎用関数
 # ===================================================
 def generate_text_from_json(keyword, dir)
-  parser = NattoParser.new
   markov = Markov.new
 
   tweet = ""
